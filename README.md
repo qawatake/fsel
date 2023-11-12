@@ -3,7 +3,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/qawatake/fsel.svg)](https://pkg.go.dev/github.com/qawatake/fsel)
 [![test](https://github.com/qawatake/fsel/actions/workflows/test.yaml/badge.svg)](https://github.com/qawatake/fsel/actions/workflows/test.yaml)
 
-Linter `fsel` detects nil is passed to a function that does nothing for nil.
+Linter: `fsel` flags field access with unverified nil errors.
 
 ```go
 func bad() error {

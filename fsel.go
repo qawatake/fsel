@@ -15,12 +15,14 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-const doc = "fsel is ..."
+const name = "fsel"
+const doc = "flags field access with unverified nil errors."
+const url = "https://pkg.go.dev/github.com/qawatake/fsel"
 
-// Analyzer is ...
 var Analyzer = &analysis.Analyzer{
-	Name: "fsel",
+	Name: name,
 	Doc:  doc,
+	URL:  url,
 	Run:  run,
 	Requires: []*analysis.Analyzer{
 		buildssa.Analyzer,
