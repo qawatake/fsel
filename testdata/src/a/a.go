@@ -1,17 +1,14 @@
 package a
 
-import (
-	"errors"
-	"fmt"
-)
-
-func f() {
+func f() error {
 	s, err := doSomething()
-	fmt.Println(s.X) // want "s.X is dereferenced without checking that it is not nil"
+	println(s.X) // want "field address"
+	return err
 }
 
 func doSomething() (*S, error) {
-	return nil, errors.New("error")
+	// return nil, errors.New("error")
+	return nil, nil
 }
 
 type S struct {

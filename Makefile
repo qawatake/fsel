@@ -18,7 +18,7 @@ cov:
 	go tool cover -html=cover.out -o cover.html
 
 build:
-	@go build -o $(BINDIR)/fderef ./internal/example/cmd/fderef
+	@go build -o $(BINDIR)/fderef ./cmd/fderef
 
 test.vet:
 	-@go vet -vettool=$(BINDIR)/fderef ./internal/...
