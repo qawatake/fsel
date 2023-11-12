@@ -1,7 +1,19 @@
 package a
 
+import (
+	"errors"
+	"fmt"
+)
+
 func f() {
-	// The pattern can be written in regular expression.
-	var gopher int // want "pattern"
-	print(gopher)  // want "identifier is gopher"
+	s, err := doSomething()
+	fmt.Println(s.X) // want "s.X is dereferenced without checking that it is not nil"
+}
+
+func doSomething() (*S, error) {
+	return nil, errors.New("error")
+}
+
+type S struct {
+	X int
 }
