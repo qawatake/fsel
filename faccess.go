@@ -1,7 +1,6 @@
 package fderef
 
 import (
-	"fmt"
 	"go/types"
 
 	"golang.org/x/tools/go/analysis"
@@ -27,7 +26,7 @@ func run(pass *analysis.Pass) (any, error) {
 	for _, fn := range funcs {
 		for _, b := range fn.Blocks {
 			for i, instr := range b.Instrs {
-				checkInstr(pass, i, instr)
+				ptrerrs := returnsPtrsAndErr(pass, i, instr)
 			}
 		}
 	}
@@ -35,47 +34,42 @@ func run(pass *analysis.Pass) (any, error) {
 	return nil, nil
 }
 
-func checkInstr(pass *analysis.Pass, id int, instr ssa.Instruction) {
-	defer func() {
-		recover()
-	}()
+func returnsPtrsAndErr(pass *analysis.Pass, id int, instr ssa.Instruction) []ptrerr {
+	defer func() { recover() }()
 	call := instr.(*ssa.Call)
-	ptrFound := false
-	errFound := false
+	numResults := call.Common().Signature().Results().Len()
+	// -1 to omit error
+	ptrerrs := make([]ptrerr, 0, numResults-1)
+	var errValue ssa.Value
 	for j := id; j < len(instr.Block().Instrs); j++ {
 		func() {
-			defer func() {
-				recover()
-			}()
+			defer func() { recover() }()
 			extract := instr.Block().Instrs[j].(*ssa.Extract)
 			if extract.Tuple == call {
-				if types.Implements(extract.Type(), errType) {
-					errFound = true
+				if types.Identical(extract.Type(), typesErr) {
+					errValue = extract
 					return
 				}
 				if extract.Type().Underlying().(*types.Pointer) != nil {
-					ptrFound = true
+					ptrerrs = append(ptrerrs, ptrerr{
+						ptr: extract,
+					})
 					return
 				}
 			}
 		}()
 	}
-	if ptrFound && errFound {
-		fmt.Println("😗", call)
+	if errValue != nil {
+		for _, p := range ptrerrs {
+			p.err = errValue
+		}
 	}
+	return ptrerrs
 }
 
-var errType = types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
+type ptrerr struct {
+	ptr ssa.Value
+	err ssa.Value
+}
 
-// func returnsPtrsAndErr(tuple *types.Tuple) bool {
-// 	if tuple.Len() < 2 {
-// 		return false
-// 	}
-// 	ptrFound := false
-// 	errFound := false
-// }
-
-// type returnedPtrsAndErr struct {
-// 	ptrs []any
-// 	err  ssa.Value
-// }
+var typesErr = types.Universe.Lookup("error").Type()
