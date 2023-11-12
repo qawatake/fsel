@@ -1,4 +1,4 @@
-module github.com/qawatake/faccess
+module github.com/qawatake/fderef
 
 go 1.21
 

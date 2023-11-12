@@ -18,10 +18,10 @@ cov:
 	go tool cover -html=cover.out -o cover.html
 
 build:
-	@go build -o $(BINDIR)/faccess ./internal/example/cmd/faccess
+	@go build -o $(BINDIR)/fderef ./internal/example/cmd/fderef
 
 test.vet:
-	-@go vet -vettool=$(BINDIR)/faccess ./internal/...
+	-@go vet -vettool=$(BINDIR)/fderef ./internal/...
 
 
 # Run the example

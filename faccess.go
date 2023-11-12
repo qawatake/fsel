@@ -1,4 +1,4 @@
-package faccess
+package fderef
 
 import (
 	"go/ast"
@@ -8,11 +8,11 @@ import (
 	"golang.org/x/tools/go/ast/inspector"
 )
 
-const doc = "faccess is ..."
+const doc = "fderef is ..."
 
 // Analyzer is ...
 var Analyzer = &analysis.Analyzer{
-	Name: "faccess",
+	Name: "fderef",
 	Doc:  doc,
 	Run:  run,
 	Requires: []*analysis.Analyzer{

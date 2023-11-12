@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/qawatake/faccess"
+	"github.com/qawatake/fderef"
 	"golang.org/x/tools/go/analysis/unitchecker"
 )
 
-func main() { unitchecker.Main(faccess.Analyzer) }
+func main() { unitchecker.Main(fderef.Analyzer) }
