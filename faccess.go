@@ -102,9 +102,6 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 						}
 					}
 				}
-				// notNil(stack, instr, instr.X, "field selection")
-				// case *ssa.IndexAddr:
-				// 	notNil(stack, instr, instr.X, "index operation")
 			}
 
 			// For nil comparison blocks, report an error if the condition
