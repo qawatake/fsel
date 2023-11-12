@@ -1,11 +1,12 @@
 package fderef
 
 import (
-	"go/ast"
+	"fmt"
+	"go/types"
 
 	"golang.org/x/tools/go/analysis"
-	"golang.org/x/tools/go/analysis/passes/inspect"
-	"golang.org/x/tools/go/ast/inspector"
+	"golang.org/x/tools/go/analysis/passes/buildssa"
+	"golang.org/x/tools/go/ssa"
 )
 
 const doc = "fderef is ..."
@@ -16,25 +17,65 @@ var Analyzer = &analysis.Analyzer{
 	Doc:  doc,
 	Run:  run,
 	Requires: []*analysis.Analyzer{
-		inspect.Analyzer,
+		buildssa.Analyzer,
 	},
 }
 
 func run(pass *analysis.Pass) (any, error) {
-	inspect := pass.ResultOf[inspect.Analyzer].(*inspector.Inspector)
+	funcs := pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs
 
-	nodeFilter := []ast.Node{
-		(*ast.Ident)(nil),
-	}
-
-	inspect.Preorder(nodeFilter, func(n ast.Node) {
-		switch n := n.(type) {
-		case *ast.Ident:
-			if n.Name == "gopher" {
-				pass.Reportf(n.Pos(), "identifier is gopher")
+	for _, fn := range funcs {
+		for _, b := range fn.Blocks {
+			for i, instr := range b.Instrs {
+				checkInstr(pass, i, instr)
 			}
 		}
-	})
+	}
 
 	return nil, nil
 }
+
+func checkInstr(pass *analysis.Pass, id int, instr ssa.Instruction) {
+	defer func() {
+		recover()
+	}()
+	call := instr.(*ssa.Call)
+	ptrFound := false
+	errFound := false
+	for j := id; j < len(instr.Block().Instrs); j++ {
+		func() {
+			defer func() {
+				recover()
+			}()
+			extract := instr.Block().Instrs[j].(*ssa.Extract)
+			if extract.Tuple == call {
+				if types.Implements(extract.Type(), errType) {
+					errFound = true
+					return
+				}
+				if extract.Type().Underlying().(*types.Pointer) != nil {
+					ptrFound = true
+					return
+				}
+			}
+		}()
+	}
+	if ptrFound && errFound {
+		fmt.Println("😗", call)
+	}
+}
+
+var errType = types.Universe.Lookup("error").Type().Underlying().(*types.Interface)
+
+// func returnsPtrsAndErr(tuple *types.Tuple) bool {
+// 	if tuple.Len() < 2 {
+// 		return false
+// 	}
+// 	ptrFound := false
+// 	errFound := false
+// }
+
+// type returnedPtrsAndErr struct {
+// 	ptrs []any
+// 	err  ssa.Value
+// }
