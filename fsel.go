@@ -4,7 +4,7 @@
 
 // Modifications Copyright (c) qawatake 2023
 
-package fderef
+package fsel
 
 import (
 	"go/token"
@@ -15,11 +15,11 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-const doc = "fderef is ..."
+const doc = "fsel is ..."
 
 // Analyzer is ...
 var Analyzer = &analysis.Analyzer{
-	Name: "fderef",
+	Name: "fsel",
 	Doc:  doc,
 	Run:  run,
 	Requires: []*analysis.Analyzer{

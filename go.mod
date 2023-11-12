@@ -1,4 +1,4 @@
-module github.com/qawatake/fderef
+module github.com/qawatake/fsel
 
 go 1.21
 
