@@ -1,6 +1,6 @@
 module github.com/qawatake/fsel
 
-go 1.21
+go 1.22.3
 
 require (
 	github.com/gostaticanalysis/testutil v0.4.0
