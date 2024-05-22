@@ -89,6 +89,7 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 	// we would need to retain the set of facts for each block.
 	seen := make([]bool, len(fn.Blocks)) // seen[i] means visit should ignore block i
 	var visit func(b *ssa.BasicBlock, stack []fact)
+	ptrerrs := make([]*ptrerr, 0, 10)
 	visit = func(b *ssa.BasicBlock, stack []fact) {
 		if seen[b.Index] {
 			return
@@ -96,7 +97,6 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 		seen[b.Index] = true
 
 		// Report nil dereferences.
-		ptrerrs := make([]*ptrerr, 0, 10)
 		for i, instr := range b.Instrs {
 			if p := returnsPtrsAndErr(pass, i, instr); len(p) > 0 {
 				ptrerrs = append(ptrerrs, p...)
@@ -105,7 +105,7 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 			case *ssa.FieldAddr:
 				for _, ptrerr := range ptrerrs {
 					if instr.X == ptrerr.ptr {
-						if nilnessOf(stack, ptrerr.err) != isnil && nilnessOf(stack, instr) == isnonnil {
+						if nilnessOf(stack, ptrerr.err) != isnil && nilnessOf(stack, ptrerr.ptr) != isnonnil {
 							pass.Reportf(instr.Pos(), "field address without checking nilness of err")
 						}
 					}
