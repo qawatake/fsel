@@ -32,6 +32,18 @@ func f4() error {
 	return nil
 }
 
+func f5() error {
+	s, err := newS()
+	if err != nil {
+		return err
+	}
+	println(s.X) // ok because err is nil
+	func() {
+		println(err)
+	}()
+	return nil
+}
+
 func g1() error {
 	var t T
 	s, err := t.S()
