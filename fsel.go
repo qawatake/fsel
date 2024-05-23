@@ -112,6 +112,12 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 						if nilnessOf(stack, ptrerr.err) != isnil && nilnessOf(stack, ptrerr.ptr) != isnonnil {
 							pass.Reportf(instr.Pos(), "field address without checking nilness of err")
 						}
+					} else if alloc := refOfAllocated(instr.X); alloc != nil {
+						if latestAllocated[alloc] == ptrerr.ptr {
+							if nilnessOf(stack, ptrerr.err) != isnil && nilnessOf(stack, ptrerr.ptr) != isnonnil {
+								pass.Reportf(instr.Pos(), "field address without checking nilness of err")
+							}
+						}
 					}
 				}
 			case *ssa.Store:
