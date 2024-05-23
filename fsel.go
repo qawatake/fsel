@@ -89,6 +89,7 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 	// we would need to retain the set of facts for each block.
 	seen := make([]bool, len(fn.Blocks)) // seen[i] means visit should ignore block i
 	var visit func(b *ssa.BasicBlock, stack []fact)
+	ptrerrs := make([]*ptrerr, 0, 10)
 	visit = func(b *ssa.BasicBlock, stack []fact) {
 		if seen[b.Index] {
 			return
@@ -96,7 +97,6 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 		seen[b.Index] = true
 
 		// Report nil dereferences.
-		ptrerrs := make([]*ptrerr, 0, 10)
 		for i, instr := range b.Instrs {
 			if p := returnsPtrsAndErr(pass, i, instr); len(p) > 0 {
 				ptrerrs = append(ptrerrs, p...)
@@ -105,71 +105,71 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 			case *ssa.FieldAddr:
 				for _, ptrerr := range ptrerrs {
 					if instr.X == ptrerr.ptr {
-						if nilnessOf(stack, ptrerr.err) != isnil && nilnessOf(stack, instr) == isnonnil {
+						if nilnessOf(stack, ptrerr.err) != isnil && nilnessOf(stack, ptrerr.ptr) != isnonnil {
 							pass.Reportf(instr.Pos(), "field address without checking nilness of err")
 						}
 					}
 				}
 			}
+		}
 
-			// For nil comparison blocks, report an error if the condition
-			// is degenerate, and push a nilness fact on the stack when
-			// visiting its true and false successor blocks.
-			if binop, tsucc, fsucc := eq(b); binop != nil {
-				xnil := nilnessOf(stack, binop.X)
-				ynil := nilnessOf(stack, binop.Y)
+		// For nil comparison blocks, report an error if the condition
+		// is degenerate, and push a nilness fact on the stack when
+		// visiting its true and false successor blocks.
+		if binop, tsucc, fsucc := eq(b); binop != nil {
+			xnil := nilnessOf(stack, binop.X)
+			ynil := nilnessOf(stack, binop.Y)
 
-				if ynil != unknown && xnil != unknown && (xnil == isnil || ynil == isnil) {
-					// If tsucc's or fsucc's sole incoming edge is impossible,
-					// it is unreachable.  Prune traversal of it and
-					// all the blocks it dominates.
-					// (We could be more precise with full dataflow
+			if ynil != unknown && xnil != unknown && (xnil == isnil || ynil == isnil) {
+				// If tsucc's or fsucc's sole incoming edge is impossible,
+				// it is unreachable.  Prune traversal of it and
+				// all the blocks it dominates.
+				// (We could be more precise with full dataflow
+				// analysis of control-flow joins.)
+				var skip *ssa.BasicBlock
+				if xnil == ynil {
+					skip = fsucc
+				} else {
+					skip = tsucc
+				}
+				for _, d := range b.Dominees() {
+					if d == skip && len(d.Preds) == 1 {
+						continue
+					}
+					visit(d, stack)
+				}
+				return
+			}
+
+			// "if x == nil" or "if nil == y" condition; x, y are unknown.
+			if xnil == isnil || ynil == isnil {
+				var newFacts facts
+				if xnil == isnil {
+					// x is nil, y is unknown:
+					// t successor learns y is nil.
+					newFacts = expandFacts(fact{binop.Y, isnil})
+				} else {
+					// x is nil, y is unknown:
+					// t successor learns x is nil.
+					newFacts = expandFacts(fact{binop.X, isnil})
+				}
+
+				for _, d := range b.Dominees() {
+					// Successor blocks learn a fact
+					// only at non-critical edges.
+					// (We could do be more precise with full dataflow
 					// analysis of control-flow joins.)
-					var skip *ssa.BasicBlock
-					if xnil == ynil {
-						skip = fsucc
-					} else {
-						skip = tsucc
-					}
-					for _, d := range b.Dominees() {
-						if d == skip && len(d.Preds) == 1 {
-							continue
+					s := stack
+					if len(d.Preds) == 1 {
+						if d == tsucc {
+							s = append(s, newFacts...)
+						} else if d == fsucc {
+							s = append(s, newFacts.negate()...)
 						}
-						visit(d, stack)
 					}
-					return
+					visit(d, s)
 				}
-
-				// "if x == nil" or "if nil == y" condition; x, y are unknown.
-				if xnil == isnil || ynil == isnil {
-					var newFacts facts
-					if xnil == isnil {
-						// x is nil, y is unknown:
-						// t successor learns y is nil.
-						newFacts = expandFacts(fact{binop.Y, isnil})
-					} else {
-						// x is nil, y is unknown:
-						// t successor learns x is nil.
-						newFacts = expandFacts(fact{binop.X, isnil})
-					}
-
-					for _, d := range b.Dominees() {
-						// Successor blocks learn a fact
-						// only at non-critical edges.
-						// (We could do be more precise with full dataflow
-						// analysis of control-flow joins.)
-						s := stack
-						if len(d.Preds) == 1 {
-							if d == tsucc {
-								s = append(s, newFacts...)
-							} else if d == fsucc {
-								s = append(s, newFacts.negate()...)
-							}
-						}
-						visit(d, s)
-					}
-					return
-				}
+				return
 			}
 		}
 
