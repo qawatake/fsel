@@ -82,6 +82,13 @@ func f9() (err error) {
 	return err
 }
 
+func f10() error {
+	s, err := newS()
+	println(s.X) // want "field address"
+	func() { println(s.X) }()
+	return err
+}
+
 func g1() error {
 	var t T
 	s, err := t.S()
