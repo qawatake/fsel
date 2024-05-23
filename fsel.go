@@ -209,7 +209,7 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 }
 
 // *t0 (t0 is a *ssa.Alloc) -> t0
-// otherwise return snil
+// otherwise returns nil
 func refOfAllocated(v ssa.Value) *ssa.Alloc {
 	if unop, ok := v.(*ssa.UnOp); ok {
 		if unop.Op == token.MUL {
