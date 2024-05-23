@@ -89,11 +89,10 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 	// soon as we've visited a subtree.  Had we traversed the CFG,
 	// we would need to retain the set of facts for each block.
 	seen := make([]bool, len(fn.Blocks)) // seen[i] means visit should ignore block i
-	var visit func(b *ssa.BasicBlock, stack []fact, allocated map[*ssa.Alloc]ssa.Value)
-	// 同じポインタt0に複数の値が代入される場合、最後の代入値を記録する。
+	// allocated: 同じポインタt0に複数の値が代入される場合、最後の代入値を記録する。
 	// *t0のnilnessは最後の代入値のnilnessにもなる。
 	// 例はtestdata/src/a/a.goのf6関数
-	// latestAllocated := make(map[*ssa.Alloc]ssa.Value)
+	var visit func(b *ssa.BasicBlock, stack []fact, allocated map[*ssa.Alloc]ssa.Value)
 	ptrerrs := make([]*ptrerr, 0, 10)
 	visit = func(b *ssa.BasicBlock, stack []fact, latestAllocated map[*ssa.Alloc]ssa.Value) {
 		if seen[b.Index] {
