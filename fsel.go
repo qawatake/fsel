@@ -9,6 +9,7 @@ package fsel
 import (
 	"go/token"
 	"go/types"
+	"maps"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/buildssa"
@@ -88,13 +89,13 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 	// soon as we've visited a subtree.  Had we traversed the CFG,
 	// we would need to retain the set of facts for each block.
 	seen := make([]bool, len(fn.Blocks)) // seen[i] means visit should ignore block i
-	var visit func(b *ssa.BasicBlock, stack []fact)
+	var visit func(b *ssa.BasicBlock, stack []fact, allocated map[*ssa.Alloc]ssa.Value)
 	// 同じポインタt0に複数の値が代入される場合、最後の代入値を記録する。
 	// *t0のnilnessは最後の代入値のnilnessにもなる。
 	// 例はtestdata/src/a/a.goのf6関数
-	latestAllocated := make(map[*ssa.Alloc]ssa.Value)
+	// latestAllocated := make(map[*ssa.Alloc]ssa.Value)
 	ptrerrs := make([]*ptrerr, 0, 10)
-	visit = func(b *ssa.BasicBlock, stack []fact) {
+	visit = func(b *ssa.BasicBlock, stack []fact, latestAllocated map[*ssa.Alloc]ssa.Value) {
 		if seen[b.Index] {
 			return
 		}
@@ -150,7 +151,7 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 					if d == skip && len(d.Preds) == 1 {
 						continue
 					}
-					visit(d, stack)
+					visit(d, stack, maps.Clone(latestAllocated))
 				}
 				return
 			}
@@ -191,20 +192,22 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 							s = append(s, newFacts.negate()...)
 						}
 					}
-					visit(d, s)
+					allocated := maps.Clone(latestAllocated)
+					visit(d, s, allocated)
 				}
 				return
 			}
 		}
 
 		for _, d := range b.Dominees() {
-			visit(d, stack)
+			allocated := maps.Clone(latestAllocated)
+			visit(d, stack, allocated)
 		}
 	}
 
 	// Visit the entry block.  No need to visit fn.Recover.
 	if fn.Blocks != nil {
-		visit(fn.Blocks[0], make([]fact, 0, 20)) // 20 is plenty
+		visit(fn.Blocks[0], make([]fact, 0, 20), make(map[*ssa.Alloc]ssa.Value)) // 20 is plenty
 	}
 }
 
