@@ -89,6 +89,10 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 	// we would need to retain the set of facts for each block.
 	seen := make([]bool, len(fn.Blocks)) // seen[i] means visit should ignore block i
 	var visit func(b *ssa.BasicBlock, stack []fact)
+	// 同じポインタt0に複数の値が代入される場合、最後の代入値を記録する。
+	// *t0のnilnessは最後の代入値のnilnessにもなる。
+	// 例はtestdata/src/a/a.goのf6関数
+	latestAllocated := make(map[*ssa.Alloc]ssa.Value)
 	ptrerrs := make([]*ptrerr, 0, 10)
 	visit = func(b *ssa.BasicBlock, stack []fact) {
 		if seen[b.Index] {
@@ -109,6 +113,10 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 							pass.Reportf(instr.Pos(), "field address without checking nilness of err")
 						}
 					}
+				}
+			case *ssa.Store:
+				if alloc, ok := instr.Addr.(*ssa.Alloc); ok {
+					latestAllocated[alloc] = instr.Val
 				}
 			}
 		}
@@ -148,10 +156,20 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 					// x is nil, y is unknown:
 					// t successor learns y is nil.
 					newFacts = expandFacts(fact{binop.Y, isnil})
+					if alloc := refOfAllocated(binop.Y); alloc != nil {
+						if val, ok := latestAllocated[alloc]; ok {
+							newFacts = append(newFacts, expandFacts(fact{val, isnil})...)
+						}
+					}
 				} else {
 					// x is nil, y is unknown:
 					// t successor learns x is nil.
 					newFacts = expandFacts(fact{binop.X, isnil})
+					if alloc := refOfAllocated(binop.X); alloc != nil {
+						if val, ok := latestAllocated[alloc]; ok {
+							newFacts = append(newFacts, expandFacts(fact{val, isnil})...)
+						}
+					}
 				}
 
 				for _, d := range b.Dominees() {
@@ -182,6 +200,19 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 	if fn.Blocks != nil {
 		visit(fn.Blocks[0], make([]fact, 0, 20)) // 20 is plenty
 	}
+}
+
+// *t0 (t0 is a *ssa.Alloc) -> t0
+// otherwise return snil
+func refOfAllocated(v ssa.Value) *ssa.Alloc {
+	if unop, ok := v.(*ssa.UnOp); ok {
+		if unop.Op == token.MUL {
+			if alloc, ok := unop.X.(*ssa.Alloc); ok {
+				return alloc
+			}
+		}
+	}
+	return nil
 }
 
 // A fact records that a block is dominated
