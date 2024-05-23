@@ -89,6 +89,21 @@ func f10() error {
 	return err
 }
 
+func f11() (err error) {
+	s, err := newS()
+	if s != nil {
+		if true {
+			return nil
+		}
+	}
+	if err != nil {
+		return err
+	}
+	println(s.X) // ok because err is nil
+	func() { println(err) }()
+	return nil
+}
+
 func g1() error {
 	var t T
 	s, err := t.S()
