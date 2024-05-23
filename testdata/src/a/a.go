@@ -38,10 +38,48 @@ func f5() error {
 		return err
 	}
 	println(s.X) // ok because err is nil
-	func() {
-		println(err)
-	}()
+	func() { println(err) }()
 	return nil
+}
+
+func f6() error {
+	s, err := newS()
+	if err != nil {
+		return err
+	}
+	s, err = newS()
+	println(s.X) // want "field address"
+	func() { println(err) }()
+	return nil
+}
+
+func f7() error {
+	s, err := newS()
+	if err != nil {
+		return err
+	}
+	s, err = newS()
+	if err != nil {
+		return err
+	}
+	println(s.X) // ok
+	func() { println(err) }()
+	return nil
+}
+
+func f8() (err error) {
+	s, err := newS()
+	if err != nil {
+		return err
+	}
+	println(s.X) // ok because err is nil
+	return nil
+}
+
+func f9() (err error) {
+	s, err := newS()
+	println(s.X) // want "field address"
+	return err
 }
 
 func g1() error {
@@ -68,20 +106,4 @@ func g3() error {
 		println(s.X) // ok because s is not nil
 	}
 	return nil
-}
-
-func newS() (*S, error) {
-	return nil, nil
-}
-
-type S struct {
-	X int
-}
-
-type T struct {
-	X int
-}
-
-func (t T) S() (*S, error) {
-	return nil, nil
 }
