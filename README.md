@@ -38,3 +38,50 @@ You can try an example by running `make run.example`.
 go install github.com/qawatake/fsel/cmd/fsel@latest
 fsel ./...
 ```
+
+## Dealing with False Positives
+
+In case of a false positive, consider either adding an ignore comment or refactoring your code.
+The latter is preferable as it enhances code resilience to future changes.
+
+Example of a false positive:
+
+```go
+func f() error {
+  s, err := doSomething()
+  if isNotNil(err) {
+    return err
+  }
+  fmt.Println(s.X) // <- false positive??
+  return nil
+}
+```
+
+Refactoring example:
+
+```go
+func f() error {
+  s, err := doSomething()
+  if isNotNil(err) {
+    return err
+  }
+  if s == nil {
+    return errors.New("unreachable")
+  }
+  fmt.Println(s.X) // ok
+  return nil
+}
+```
+
+Example of using an ignore comment:
+
+```go
+func f() error {
+  s, err := doSomething()
+  if isNotNil(err) {
+    return err
+  }
+  fmt.Println(s.X) // lint:ignore fsel reason
+  return nil
+}
+```
