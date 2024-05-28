@@ -57,6 +57,8 @@ func f() error {
 }
 ```
 
+Other examples of false positives can be found in [testdata](/internal/false_positive/testdata/src/a/a.go).
+
 Refactoring example:
 
 ```go

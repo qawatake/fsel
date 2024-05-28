@@ -13,7 +13,7 @@ test.cover:
 	go test -race -shuffle=on -coverprofile=coverage.txt -covermode=atomic ./...
 
 # it is expected to fail
-test.falsepositive:
+test.fail:
 	go mod tidy
 	go test -tags falsepositive ./internal/...
 
