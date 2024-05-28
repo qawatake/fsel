@@ -99,7 +99,6 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 			return
 		}
 		seen[b.Index] = true
-
 		// Report nil dereferences.
 		for i, instr := range b.Instrs {
 			if p := returnsPtrsAndErr(pass, i, instr); len(p) > 0 {
@@ -116,6 +115,22 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 						if latestAllocated[alloc] == ptrerr.ptr {
 							if nilnessOf(stack, ptrerr.err) != isnil && nilnessOf(stack, ptrerr.ptr) != isnonnil {
 								pass.Reportf(instr.Pos(), "field address without checking nilness of err")
+							}
+						}
+					}
+					if phi, ok := instr.X.(*ssa.Phi); ok {
+						matched := false
+						for _, edge := range phi.Edges {
+							if edge == ptrerr.ptr {
+								matched = true
+							}
+						}
+						if matched {
+							for _, edge := range phi.Edges {
+								if nilnessOf(stack, ptrerr.err) != isnil && nilnessOf(stack, edge) != isnonnil {
+									pass.Reportf(instr.Pos(), "field address without checking nilness of err")
+									break
+								}
 							}
 						}
 					}
