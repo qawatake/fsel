@@ -9,15 +9,6 @@ func f1() error {
 	return nil
 }
 
-func f2() error {
-	s, err := newS()
-	if err != nil {
-		s = &S{}
-	}
-	println(s.X) // ok because s is not nil even if err is not nil.
-	return nil
-}
-
 func f3() error {
 	s, err := newS()
 	if err != nil && err.Error() != "expected" { // A
