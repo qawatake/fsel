@@ -12,6 +12,11 @@ test.cover:
 	go mod tidy
 	go test -race -shuffle=on -coverprofile=coverage.txt -covermode=atomic ./...
 
+# it is expected to fail
+test.fail:
+	go mod tidy
+	go test -tags falsepositive ./internal/...
+
 # For local environment
 cov:
 	go test -cover -coverprofile=cover.out
