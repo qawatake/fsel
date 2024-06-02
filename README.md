@@ -68,7 +68,7 @@ func f() error {
     return err
   }
   if s == nil {
-    return errors.New("unreachable")
+    return errors.New("unreachable: redundant check for false positive by fsel")
   }
   fmt.Println(s.X) // ok
   return nil
