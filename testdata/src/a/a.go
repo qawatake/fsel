@@ -104,6 +104,16 @@ func f11() (err error) {
 	return nil
 }
 
+func f12() error {
+	s, err := newS()
+	if err != nil {
+		println(s.X) // want "field address"
+		return err
+	}
+	func() { println(s.X) }()
+	return nil
+}
+
 func g1() error {
 	var t T
 	s, err := t.S()

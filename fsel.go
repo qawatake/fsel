@@ -9,7 +9,6 @@ package fsel
 import (
 	"go/token"
 	"go/types"
-	"maps"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/buildssa"
@@ -82,6 +81,14 @@ type ptrerr struct {
 var typesErr = types.Universe.Lookup("error").Type()
 
 func runFunc(pass *analysis.Pass, fn *ssa.Function) {
+	a := make(assignments)
+	for _, b := range fn.Blocks {
+		for _, instr := range b.Instrs {
+			if store, ok := instr.(*ssa.Store); ok {
+				a.add(store)
+			}
+		}
+	}
 	// visit visits reachable blocks of the CFG in dominance order,
 	// maintaining a stack of dominating nilness facts.
 	//
@@ -92,9 +99,9 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 	// allocated: 同じポインタt0に複数の値が代入される場合、最後の代入値を記録する。
 	// *t0のnilnessは最後の代入値のnilnessにもなる。
 	// 例はtestdata/src/a/a.goのf6関数
-	var visit func(b *ssa.BasicBlock, stack []fact, allocated map[*ssa.Alloc]ssa.Value)
+	var visit func(b *ssa.BasicBlock, stack []fact)
 	ptrerrs := make([]*ptrerr, 0, 10)
-	visit = func(b *ssa.BasicBlock, stack []fact, latestAllocated map[*ssa.Alloc]ssa.Value) {
+	visit = func(b *ssa.BasicBlock, stack []fact) {
 		if seen[b.Index] {
 			return
 		}
@@ -105,24 +112,10 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 			if p := returnsPtrsAndErr(pass, i, instr); len(p) > 0 {
 				ptrerrs = append(ptrerrs, p...)
 			}
-			switch instr := instr.(type) {
-			case *ssa.FieldAddr:
-				for _, ptrerr := range ptrerrs {
-					if instr.X == ptrerr.ptr {
-						if nilnessOf(stack, ptrerr.err) != isnil && nilnessOf(stack, ptrerr.ptr) != isnonnil {
-							pass.Reportf(instr.Pos(), "field address without checking nilness of err")
-						}
-					} else if alloc := refOfAllocated(instr.X); alloc != nil {
-						if latestAllocated[alloc] == ptrerr.ptr {
-							if nilnessOf(stack, ptrerr.err) != isnil && nilnessOf(stack, ptrerr.ptr) != isnonnil {
-								pass.Reportf(instr.Pos(), "field address without checking nilness of err")
-							}
-						}
-					}
-				}
-			case *ssa.Store:
-				if alloc, ok := instr.Addr.(*ssa.Alloc); ok {
-					latestAllocated[alloc] = instr.Val
+			addr, ptrerr := fieldAddrOf(a, instr, ptrerrs)
+			if ptrerr != nil {
+				if nilnessOf(stack, ptrerr.err) != isnil && nilnessOf(stack, ptrerr.ptr) != isnonnil {
+					pass.Reportf(addr.Pos(), "field address without checking nilness of err")
 				}
 			}
 		}
@@ -150,7 +143,7 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 					if d == skip && len(d.Preds) == 1 {
 						continue
 					}
-					visit(d, stack, maps.Clone(latestAllocated))
+					visit(d, stack)
 				}
 				return
 			}
@@ -162,19 +155,18 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 					// x is nil, y is unknown:
 					// t successor learns y is nil.
 					newFacts = expandFacts(fact{binop.Y, isnil})
-					if alloc := refOfAllocated(binop.Y); alloc != nil {
-						if val, ok := latestAllocated[alloc]; ok {
-							newFacts = append(newFacts, expandFacts(fact{val, isnil})...)
-						}
+					if alloc(binop.Y) != nil {
+						v := a.current(alloc(binop.Y), binop)
+						newFacts = append(newFacts, expandFacts(fact{v, isnil})...)
+
 					}
 				} else {
 					// x is nil, y is unknown:
 					// t successor learns x is nil.
 					newFacts = expandFacts(fact{binop.X, isnil})
-					if alloc := refOfAllocated(binop.X); alloc != nil {
-						if val, ok := latestAllocated[alloc]; ok {
-							newFacts = append(newFacts, expandFacts(fact{val, isnil})...)
-						}
+					if alloc(binop.X) != nil {
+						v := a.current(alloc(binop.X), binop)
+						newFacts = append(newFacts, expandFacts(fact{v, isnil})...)
 					}
 				}
 
@@ -191,36 +183,39 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 							s = append(s, newFacts.negate()...)
 						}
 					}
-					allocated := maps.Clone(latestAllocated)
-					visit(d, s, allocated)
+					visit(d, s)
 				}
 				return
 			}
 		}
-
 		for _, d := range b.Dominees() {
-			allocated := maps.Clone(latestAllocated)
-			visit(d, stack, allocated)
+			visit(d, stack)
 		}
 	}
 
 	// Visit the entry block.  No need to visit fn.Recover.
 	if fn.Blocks != nil {
-		visit(fn.Blocks[0], make([]fact, 0, 20), make(map[*ssa.Alloc]ssa.Value)) // 20 is plenty
+		visit(fn.Blocks[0], make([]fact, 0, 20)) // 20 is plenty
 	}
 }
 
-// *t0 (t0 is a *ssa.Alloc) -> t0
-// otherwise returns nil
-func refOfAllocated(v ssa.Value) *ssa.Alloc {
-	if unop, ok := v.(*ssa.UnOp); ok {
-		if unop.Op == token.MUL {
-			if alloc, ok := unop.X.(*ssa.Alloc); ok {
-				return alloc
+func fieldAddrOf(a assignments, instr ssa.Instruction, ptrerrs []*ptrerr) (*ssa.FieldAddr, *ptrerr) {
+	fieldAddr, ok := instr.(*ssa.FieldAddr)
+	if !ok {
+		return nil, nil
+	}
+	for _, ptrerr := range ptrerrs {
+		if fieldAddr.X == ptrerr.ptr {
+			return fieldAddr, ptrerr
+		}
+		if alloc(fieldAddr.X) != nil {
+			val := a.current(alloc(fieldAddr.X), fieldAddr)
+			if val == ptrerr.ptr {
+				return fieldAddr, ptrerr
 			}
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // A fact records that a block is dominated
@@ -382,4 +377,67 @@ func (ff facts) negate() facts {
 		nn[i] = f.negate()
 	}
 	return nn
+}
+
+// t0 : t11 -> t12 -> t13
+// *t0 := t11
+// *t0 := t12
+// *t0 := t13
+type assignments map[*ssa.Alloc][]*ssa.Store
+
+func (a assignments) add(s *ssa.Store) {
+	if s == nil {
+		return
+	}
+	if to, ok := s.Addr.(*ssa.Alloc); ok {
+		if alloc(s.Val) != to {
+			a[to] = append(a[to], s)
+		}
+	}
+}
+
+func (a assignments) current(x *ssa.Alloc, instr ssa.Instruction) ssa.Value {
+	stores := a[x]
+	if len(stores) == 0 {
+		return nil
+	}
+	b := instr.Block()
+	for i := len(stores) - 1; i >= 0; i-- {
+		s := stores[i]
+		if !(s.Block().Dominates(b) || s.Block() == b) {
+			continue
+		}
+		if s.Block().Dominates(b) {
+			return s.Val
+		}
+		dominator := func(x, y ssa.Instruction) ssa.Instruction {
+			for _, i := range b.Instrs {
+				if i == x {
+					return x
+				}
+				if i == y {
+					return y
+				}
+			}
+			return nil
+		}(s, instr)
+		if dominator != s {
+			continue
+		}
+		return s.Val
+	}
+	return nil
+}
+
+// *t0 (t0 is a *ssa.Alloc) -> t0
+// otherwise returns nil
+func alloc(v ssa.Value) *ssa.Alloc {
+	if unop, ok := v.(*ssa.UnOp); ok {
+		if unop.Op == token.MUL {
+			if alloc, ok := unop.X.(*ssa.Alloc); ok {
+				return alloc
+			}
+		}
+	}
+	return nil
 }
