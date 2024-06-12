@@ -10,6 +10,8 @@ import (
 	"go/token"
 	"go/types"
 
+	"github.com/gostaticanalysis/comment"
+	"github.com/gostaticanalysis/comment/passes/commentmap"
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/buildssa"
 	"golang.org/x/tools/go/ssa"
@@ -26,14 +28,16 @@ var Analyzer = &analysis.Analyzer{
 	Run:  run,
 	Requires: []*analysis.Analyzer{
 		buildssa.Analyzer,
+		commentmap.Analyzer,
 	},
 }
 
 func run(pass *analysis.Pass) (any, error) {
 	funcs := pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs
+	cmaps := pass.ResultOf[commentmap.Analyzer].(comment.Maps)
 
 	for _, fn := range funcs {
-		runFunc(pass, fn)
+		runFunc(pass, cmaps, fn)
 	}
 
 	return nil, nil
@@ -80,7 +84,7 @@ type ptrerr struct {
 
 var typesErr = types.Universe.Lookup("error").Type()
 
-func runFunc(pass *analysis.Pass, fn *ssa.Function) {
+func runFunc(pass *analysis.Pass, cmaps comment.Maps, fn *ssa.Function) {
 	a := make(assignments)
 	for _, b := range fn.Blocks {
 		for _, instr := range b.Instrs {
@@ -115,7 +119,9 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 			addr, ptrerr := fieldAddrOf(a, instr, ptrerrs)
 			if ptrerr != nil {
 				if nilnessOf(stack, ptrerr.err) != isnil && nilnessOf(stack, ptrerr.ptr) != isnonnil {
-					pass.Reportf(addr.Pos(), "field address without checking nilness of err")
+					if !cmaps.IgnoreLine(pass.Fset, pass.Fset.Position(addr.Pos()).Line, name) {
+						pass.Reportf(addr.Pos(), "field address without checking nilness of err")
+					}
 				}
 			}
 		}
