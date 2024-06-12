@@ -10,6 +10,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"slices"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -34,8 +35,10 @@ var Analyzer = &analysis.Analyzer{
 func run(pass *analysis.Pass) (any, error) {
 	funcs := pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs
 
+	ignore := newIgnoreComments(pass, name)
+
 	for _, fn := range funcs {
-		runFunc(pass, fn)
+		runFunc(pass, fn, ignore)
 	}
 
 	return nil, nil
@@ -82,7 +85,7 @@ type ptrerr struct {
 
 var typesErr = types.Universe.Lookup("error").Type()
 
-func runFunc(pass *analysis.Pass, fn *ssa.Function) {
+func runFunc(pass *analysis.Pass, fn *ssa.Function, ignore *ignoreComments) {
 	a := make(assignments)
 	for _, b := range fn.Blocks {
 		for _, instr := range b.Instrs {
@@ -101,9 +104,9 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 	// allocated: 同じポインタt0に複数の値が代入される場合、最後の代入値を記録する。
 	// *t0のnilnessは最後の代入値のnilnessにもなる。
 	// 例はtestdata/src/a/a.goのf6関数
-	var visit func(b *ssa.BasicBlock, stack []fact)
+	var visit func(b *ssa.BasicBlock, stack []fact, ignored []ssa.Value)
 	ptrerrs := make([]*ptrerr, 0, 10)
-	visit = func(b *ssa.BasicBlock, stack []fact) {
+	visit = func(b *ssa.BasicBlock, stack []fact, ignored []ssa.Value) {
 		if seen[b.Index] {
 			return
 		}
@@ -116,8 +119,11 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 			}
 			addr, ptrerr := fieldAddrOf(a, instr, ptrerrs)
 			if ptrerr != nil {
+				if ignore.Ignore(addr.Pos()) {
+					ignored = append(ignored, ptrerr.ptr)
+				}
 				if nilnessOf(stack, ptrerr.err) != isnil && nilnessOf(stack, ptrerr.ptr) != isnonnil {
-					if !ignoreLine(pass, addr.Pos(), "fsel") {
+					if !slices.Contains(ignored, ptrerr.ptr) {
 						pass.Reportf(addr.Pos(), "field address without checking nilness of err")
 					}
 				}
@@ -147,7 +153,7 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 					if d == skip && len(d.Preds) == 1 {
 						continue
 					}
-					visit(d, stack)
+					visit(d, stack, ignored)
 				}
 				return
 			}
@@ -180,6 +186,7 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 					// (We could do be more precise with full dataflow
 					// analysis of control-flow joins.)
 					s := stack
+					ig := ignored
 					if len(d.Preds) == 1 {
 						if d == tsucc {
 							s = append(s, newFacts...)
@@ -187,19 +194,19 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 							s = append(s, newFacts.negate()...)
 						}
 					}
-					visit(d, s)
+					visit(d, s, ig)
 				}
 				return
 			}
 		}
 		for _, d := range b.Dominees() {
-			visit(d, stack)
+			visit(d, stack, ignored)
 		}
 	}
 
 	// Visit the entry block.  No need to visit fn.Recover.
 	if fn.Blocks != nil {
-		visit(fn.Blocks[0], make([]fact, 0, 20)) // 20 is plenty
+		visit(fn.Blocks[0], make([]fact, 0, 20), nil) // 20 is plenty
 	}
 }
 
@@ -445,46 +452,52 @@ func alloc(v ssa.Value) *ssa.Alloc {
 	return nil
 }
 
-// posがコメントの直下あるいはコメントと同じ行にあり、かつ、コメントが"//lint:ignore Check1[,Check2,...,CheckN] reason"の書式を満たすかどうかを返す。
-func ignoreLine(pass *analysis.Pass, pos token.Pos, check string) bool {
-	file := func() *ast.File {
-		for _, f := range pass.Files {
-			if f.Pos() <= pos && pos <= f.End() {
-				return f
-			}
-		}
-		return nil
-	}()
-	if file == nil {
-		return false
+type ignoreComments struct {
+	pass     *analysis.Pass
+	comments []*ast.Comment
+}
+
+func newIgnoreComments(pass *analysis.Pass, check string) *ignoreComments {
+	ignoreComments := &ignoreComments{
+		pass: pass,
 	}
-	for _, cg := range file.Comments {
-		for _, c := range cg.List {
-			// 同じ行
-			onSameLine := pass.Fset.Position(c.Pos()).Line == pass.Fset.Position(pos).Line
-			// 直下
-			onDirectlyUnder := pass.Fset.Position(c.Pos()).Line+1 == pass.Fset.Position(pos).Line
-			if !onSameLine && !onDirectlyUnder {
-				continue
-			}
+	for _, f := range pass.Files {
+		for _, cg := range f.Comments {
+			for _, c := range cg.List {
+				// copied from: https://github.com/gostaticanalysis/comment/blob/ac69f136d0313b53cf294fe3d5b5b55fd0380d56/comment.go#L133-L148
+				if !strings.HasPrefix(c.Text, "//") {
+					continue
+				}
 
-			// copied from: https://github.com/gostaticanalysis/comment/blob/ac69f136d0313b53cf294fe3d5b5b55fd0380d56/comment.go#L133-L148
-			if !strings.HasPrefix(c.Text, "//") {
-				continue
-			}
+				s := strings.TrimSpace(c.Text[2:]) // list.Text[2:]: trim "//"
+				txt := strings.Split(s, " ")
+				if len(txt) < 3 || txt[0] != "lint:ignore" {
+					continue
+				}
 
-			s := strings.TrimSpace(c.Text[2:]) // list.Text[2:]: trim "//"
-			txt := strings.Split(s, " ")
-			if len(txt) < 3 || txt[0] != "lint:ignore" {
-				continue
-			}
-
-			checks := strings.Split(txt[1], ",") // txt[1]: trim "lint:ignore"
-			for i := range checks {
-				if check == checks[i] {
-					return true
+				checks := strings.Split(txt[1], ",") // txt[1]: trim "lint:ignore"
+				for i := range checks {
+					if check == checks[i] {
+						ignoreComments.comments = append(ignoreComments.comments, c)
+					}
 				}
 			}
+		}
+	}
+	return ignoreComments
+}
+
+// posがコメントの直下あるいはコメントと同じ行にあり、かつ、コメントが"//lint:ignore Check1[,Check2,...,CheckN] reason"の書式を満たすかどうかを返す。
+func (ic *ignoreComments) Ignore(pos token.Pos) bool {
+	for _, c := range ic.comments {
+		inSameFile := ic.pass.Fset.File(c.Pos()) == ic.pass.Fset.File(pos)
+		if !inSameFile {
+			continue
+		}
+		onSameLine := ic.pass.Fset.Position(c.Pos()).Line == ic.pass.Fset.Position(pos).Line
+		onDirectlyUnder := ic.pass.Fset.Position(c.Pos()).Line+1 == ic.pass.Fset.Position(pos).Line
+		if onSameLine || onDirectlyUnder {
+			return true
 		}
 	}
 	return false

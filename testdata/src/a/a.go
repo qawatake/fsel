@@ -144,6 +144,23 @@ func f16() error {
 	return nil
 }
 
+func f17() error {
+	s, err := newS()
+	//lint:ignore fsel reason
+	println(s.X)
+	println(s.X)
+	return err
+}
+
+func f18() error {
+	s, err := newS()
+	//lint:ignore fsel reason
+	println(s.X)
+	println(s.X)
+	defer func() { println(s) }()
+	return err
+}
+
 func g1() error {
 	var t T
 	s, err := t.S()
