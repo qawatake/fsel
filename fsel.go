@@ -445,6 +445,7 @@ func alloc(v ssa.Value) *ssa.Alloc {
 	return nil
 }
 
+// posがコメントの直下あるいはコメントと同じ行にあり、かつ、コメントが"//lint:ignore Check1[,Check2,...,CheckN] reason"の書式を満たすかどうかを返す。
 func ignoreLine(pass *analysis.Pass, pos token.Pos, check string) bool {
 	file := func() *ast.File {
 		for _, f := range pass.Files {
@@ -459,7 +460,11 @@ func ignoreLine(pass *analysis.Pass, pos token.Pos, check string) bool {
 	}
 	for _, cg := range file.Comments {
 		for _, c := range cg.List {
-			if pass.Fset.Position(c.Pos()).Line != pass.Fset.Position(pos).Line {
+			// 同じ行
+			onSameLine := pass.Fset.Position(c.Pos()).Line == pass.Fset.Position(pos).Line
+			// 直下
+			onDirectlyUnder := pass.Fset.Position(c.Pos()).Line+1 == pass.Fset.Position(pos).Line
+			if !onSameLine && !onDirectlyUnder {
 				continue
 			}
 
