@@ -114,6 +114,12 @@ func f12() error {
 	return nil
 }
 
+func f13() error {
+	s, err := newS()
+	println(s.X) //lint:ignore fsel reason
+	return err
+}
+
 func g1() error {
 	var t T
 	s, err := t.S()
