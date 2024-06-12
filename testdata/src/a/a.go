@@ -114,6 +114,53 @@ func f12() error {
 	return nil
 }
 
+func f13() error {
+	s, err := newS()
+	println(s.X) //lint:ignore fsel reason
+	return err
+}
+
+func f14() error {
+	s, err := newS()
+	if s.X == 0 { //lint:ignore fsel reason
+		return err
+	}
+	return nil
+}
+
+func f15() error {
+	s, err := newS()
+	//lint:ignore fsel reason
+	println(s.X)
+	return err
+}
+
+func f16() error {
+	s, err := newS()
+	//lint:ignore fsel reason
+	if s.X == 0 {
+		return err
+	}
+	return nil
+}
+
+func f17() error {
+	s, err := newS()
+	//lint:ignore fsel reason
+	println(s.X)
+	println(s.X)
+	return err
+}
+
+func f18() error {
+	s, err := newS()
+	//lint:ignore fsel reason
+	println(s.X)
+	println(s.X)
+	defer func() { println(s) }()
+	return err
+}
+
 func g1() error {
 	var t T
 	s, err := t.S()
