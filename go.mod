@@ -3,12 +3,12 @@ module github.com/qawatake/fsel
 go 1.22.3
 
 require (
-	github.com/gostaticanalysis/comment v1.4.2
 	github.com/gostaticanalysis/testutil v0.4.0
 	golang.org/x/tools v0.15.0
 )
 
 require (
+	github.com/google/go-cmp v0.5.4 // indirect
 	github.com/hashicorp/go-version v1.2.1 // indirect
 	github.com/otiai10/copy v1.2.0 // indirect
 	github.com/tenntenn/modver v1.0.1 // indirect

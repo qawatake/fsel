@@ -7,11 +7,11 @@
 package fsel
 
 import (
+	"go/ast"
 	"go/token"
 	"go/types"
+	"strings"
 
-	"github.com/gostaticanalysis/comment"
-	"github.com/gostaticanalysis/comment/passes/commentmap"
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/buildssa"
 	"golang.org/x/tools/go/ssa"
@@ -28,16 +28,14 @@ var Analyzer = &analysis.Analyzer{
 	Run:  run,
 	Requires: []*analysis.Analyzer{
 		buildssa.Analyzer,
-		commentmap.Analyzer,
 	},
 }
 
 func run(pass *analysis.Pass) (any, error) {
 	funcs := pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs
-	cmaps := pass.ResultOf[commentmap.Analyzer].(comment.Maps)
 
 	for _, fn := range funcs {
-		runFunc(pass, cmaps, fn)
+		runFunc(pass, fn)
 	}
 
 	return nil, nil
@@ -84,7 +82,7 @@ type ptrerr struct {
 
 var typesErr = types.Universe.Lookup("error").Type()
 
-func runFunc(pass *analysis.Pass, cmaps comment.Maps, fn *ssa.Function) {
+func runFunc(pass *analysis.Pass, fn *ssa.Function) {
 	a := make(assignments)
 	for _, b := range fn.Blocks {
 		for _, instr := range b.Instrs {
@@ -119,7 +117,7 @@ func runFunc(pass *analysis.Pass, cmaps comment.Maps, fn *ssa.Function) {
 			addr, ptrerr := fieldAddrOf(a, instr, ptrerrs)
 			if ptrerr != nil {
 				if nilnessOf(stack, ptrerr.err) != isnil && nilnessOf(stack, ptrerr.ptr) != isnonnil {
-					if !cmaps.IgnoreLine(pass.Fset, pass.Fset.Position(addr.Pos()).Line, name) {
+					if !ignoreLine(pass, addr.Pos(), "fsel") {
 						pass.Reportf(addr.Pos(), "field address without checking nilness of err")
 					}
 				}
@@ -445,4 +443,44 @@ func alloc(v ssa.Value) *ssa.Alloc {
 		}
 	}
 	return nil
+}
+
+func ignoreLine(pass *analysis.Pass, pos token.Pos, check string) bool {
+	file := func() *ast.File {
+		for _, f := range pass.Files {
+			if f.Pos() <= pos && pos <= f.End() {
+				return f
+			}
+		}
+		return nil
+	}()
+	if file == nil {
+		return false
+	}
+	for _, cg := range file.Comments {
+		for _, c := range cg.List {
+			if pass.Fset.Position(c.Pos()).Line != pass.Fset.Position(pos).Line {
+				continue
+			}
+
+			// copied from: https://github.com/gostaticanalysis/comment/blob/ac69f136d0313b53cf294fe3d5b5b55fd0380d56/comment.go#L133-L148
+			if !strings.HasPrefix(c.Text, "//") {
+				continue
+			}
+
+			s := strings.TrimSpace(c.Text[2:]) // list.Text[2:]: trim "//"
+			txt := strings.Split(s, " ")
+			if len(txt) < 3 || txt[0] != "lint:ignore" {
+				continue
+			}
+
+			checks := strings.Split(txt[1], ",") // txt[1]: trim "lint:ignore"
+			for i := range checks {
+				if check == checks[i] {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

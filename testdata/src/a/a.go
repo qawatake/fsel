@@ -120,6 +120,14 @@ func f13() error {
 	return err
 }
 
+func f14() error {
+	s, err := newS()
+	if s.X == 0 { //lint:ignore fsel reason
+		return err
+	}
+	return nil
+}
+
 func g1() error {
 	var t T
 	s, err := t.S()
