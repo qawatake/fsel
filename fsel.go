@@ -417,6 +417,7 @@ func (a assignments) add(s *ssa.Store) {
 	}
 }
 
+//nolint:ireturn // cannot return concrete types
 func (a assignments) current(x *ssa.Alloc, instr ssa.Instruction) ssa.Value {
 	stores := a[x]
 	if len(stores) == 0 {
