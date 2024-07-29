@@ -9,8 +9,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v4
+      - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: false
+      - uses: qawatake/depcache@main
+        with:
+          dependency-path: go.mod
+          path: ~/go/pkg/mod
+          skip-save: ${{ github.ref != 'refs/heads/main' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: qawatake/runcache@main
+        with:
+          path: ~/.cache/go-build
+          skip-save: ${{ github.ref != 'refs/heads/main' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Lint
         run: make lint
