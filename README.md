@@ -7,26 +7,26 @@ Linter: `fsel` flags field access with unverified nil errors.
 
 ```go
 func bad() error {
-  s, err := doSomething()
-  fmt.Println(s.X) // <- field address without checking nilness of err
-  return err
+	s, err := doSomething()
+	fmt.Println(s.X) // <- field address without checking nilness of err
+	return err
 }
 
 func good() error {
-  s, err := doSomething()
-  if err != nil {
-    return err
-  }
-  fmt.Println(s.X) // ok because err is definitely nil
-  return nil
+	s, err := doSomething()
+	if err != nil {
+		return err
+	}
+	fmt.Println(s.X) // ok because err is definitely nil
+	return nil
 }
 
 func doSomething() (*S, error) {
-  return nil, errors.New("error")
+	return nil, errors.New("error")
 }
 
 type S struct {
-  X int
+	X int
 }
 ```
 
@@ -45,11 +45,11 @@ To ignore a false positive, add a comment `//lint:ignore fsel reason` to the lin
 
 ```go
 func f() error {
-  s, err := doSomething()
-  if isNotNil(err) {
-    return err
-  }
-  fmt.Println(s.X) //lint:ignore fsel reason
-  return nil
+	s, err := doSomething()
+	if isNotNil(err) {
+		return err
+	}
+	fmt.Println(s.X) //lint:ignore fsel reason
+	return nil
 }
 ```
