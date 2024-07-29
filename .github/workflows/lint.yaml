@@ -7,6 +7,9 @@ name: lint
 jobs:
   lint:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write # to delete cache
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
