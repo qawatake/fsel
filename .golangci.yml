@@ -1,0 +1,21 @@
+# reference: https://github.com/connectrpc/connect-go/blob/cd003a0d0733fc9a243c7e97732f863e11120abb/.golangci.yml
+linters:
+  enable-all: true
+  disable:
+    - gomnd # Deprecated
+    - execinquery # Deprecated
+    - lll # don't want hard limits for line length
+    - nlreturn # generous whitespace violates house style
+    - wsl # generous whitespace violates house style
+    - depguard # unnecessary for small libraries
+    - funlen # rely on code review to limit function length
+    - varnamelen
+    - exhaustruct # for simplicity of examples
+    - gofumpt # prefer standard gofmt
+    - goimports # rely on gci instead
+    - gocognit # dubious "cognitive overhead" quantification
+    - cyclop # covered by gocyclo
+issues:
+  exclude-dirs:
+    - internal/example
+    - internal/false_positive

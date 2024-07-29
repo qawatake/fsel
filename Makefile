@@ -1,20 +1,22 @@
 BINDIR := $(CURDIR)/bin
+golangci-lint := go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.59.1
+gofmtmd := go run github.com/po3rin/gofmtmd/cmd/gofmtmd@latest
+
+fmtmd:
+	$(gofmtmd) -r README.md
 
 test:
-	go mod tidy
 	go test ./... -shuffle=on -race
 
 lint:
-	go mod tidy
 	go vet  ./...
+	$(golangci-lint) run
 
 test.cover:
-	go mod tidy
 	go test -race -shuffle=on -coverprofile=coverage.txt -covermode=atomic ./...
 
 # it is expected to fail
 test.fail:
-	go mod tidy
 	go test -tags falsepositive ./internal/...
 
 # For local environment

@@ -22,6 +22,7 @@ const name = "fsel"
 const doc = "flags field access with unverified nil errors."
 const url = "https://pkg.go.dev/github.com/qawatake/fsel"
 
+//nolint:gochecknoglobals // convention of the analysis API
 var Analyzer = &analysis.Analyzer{
 	Name: name,
 	Doc:  doc,
@@ -33,7 +34,7 @@ var Analyzer = &analysis.Analyzer{
 }
 
 func run(pass *analysis.Pass) (any, error) {
-	funcs := pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs
+	funcs := pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA).SrcFuncs //nolint:forcetypeassert // convention of the analysis API
 
 	ignore := newIgnoreComments(pass, name)
 
@@ -41,26 +42,27 @@ func run(pass *analysis.Pass) (any, error) {
 		runFunc(pass, fn, ignore)
 	}
 
+	//nolint:nilnil // the signature is defined by the analysis API
 	return nil, nil
 }
 
-func returnsPtrsAndErr(pass *analysis.Pass, id int, instr ssa.Instruction) []*ptrerr {
-	defer func() { recover() }()
-	call := instr.(*ssa.Call)
+func returnsPtrsAndErr(_ *analysis.Pass, id int, instr ssa.Instruction) []*ptrerr {
+	defer func() { recover() }() //nolint:errcheck // ignore error
+	call := instr.(*ssa.Call)    //nolint:forcetypeassert // recovered
 	numResults := call.Common().Signature().Results().Len()
 	// -1 to omit error
 	ptrerrs := make([]*ptrerr, 0, numResults-1)
 	var errValue ssa.Value
 	for j := id; j < len(instr.Block().Instrs); j++ {
 		func() {
-			defer func() { recover() }()
-			extract := instr.Block().Instrs[j].(*ssa.Extract)
+			defer func() { recover() }()                      //nolint:errcheck // ignore error
+			extract := instr.Block().Instrs[j].(*ssa.Extract) //nolint:forcetypeassert // recovered
 			if extract.Tuple == call {
 				if types.Identical(extract.Type(), typesErr) {
 					errValue = extract
 					return
 				}
-				if extract.Type().Underlying().(*types.Pointer) != nil {
+				if p, ok := extract.Type().Underlying().(*types.Pointer); ok && p != nil {
 					ptrerrs = append(ptrerrs, &ptrerr{
 						ptr: extract,
 					})
@@ -83,8 +85,10 @@ type ptrerr struct {
 	err ssa.Value
 }
 
+//nolint:gochecknoglobals // it is read-only
 var typesErr = types.Universe.Lookup("error").Type()
 
+//nolint:gocyclo
 func runFunc(pass *analysis.Pass, fn *ssa.Function, ignore *ignoreComments) {
 	a := make(assignments)
 	for _, b := range fn.Blocks {
@@ -105,7 +109,8 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function, ignore *ignoreComments) {
 	// *t0のnilnessは最後の代入値のnilnessにもなる。
 	// 例はtestdata/src/a/a.goのf6関数
 	var visit func(b *ssa.BasicBlock, stack []fact, ignored []ssa.Value)
-	ptrerrs := make([]*ptrerr, 0, 10)
+	const initialPtrErrsCap = 10 // no reason
+	ptrerrs := make([]*ptrerr, 0, initialPtrErrsCap)
 	visit = func(b *ssa.BasicBlock, stack []fact, ignored []ssa.Value) {
 		if seen[b.Index] {
 			return
@@ -133,7 +138,7 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function, ignore *ignoreComments) {
 		// For nil comparison blocks, report an error if the condition
 		// is degenerate, and push a nilness fact on the stack when
 		// visiting its true and false successor blocks.
-		if binop, tsucc, fsucc := eq(b); binop != nil {
+		if binop, tsucc, fsucc := eq(b); binop != nil { //nolint:nestif // original code
 			xnil := nilnessOf(stack, binop.X)
 			ynil := nilnessOf(stack, binop.Y)
 
@@ -168,7 +173,6 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function, ignore *ignoreComments) {
 					if alloc(binop.Y) != nil {
 						v := a.current(alloc(binop.Y), binop)
 						newFacts = append(newFacts, expandFacts(fact{v, isnil})...)
-
 					}
 				} else {
 					// x is nil, y is unknown:
@@ -206,7 +210,8 @@ func runFunc(pass *analysis.Pass, fn *ssa.Function, ignore *ignoreComments) {
 
 	// Visit the entry block.  No need to visit fn.Recover.
 	if fn.Blocks != nil {
-		visit(fn.Blocks[0], make([]fact, 0, 20), nil) // 20 is plenty
+		const initialStackCap = 20 // 20 is plenty
+		visit(fn.Blocks[0], make([]fact, 0, initialStackCap), nil)
 	}
 }
 
@@ -246,6 +251,7 @@ const (
 	isnil            = 1
 )
 
+//nolint:gochecknoglobals // it is read-only
 var nilnessStrings = []string{"non-nil", "unknown", "nil"}
 
 func (n nilness) String() string { return nilnessStrings[n+1] }
@@ -326,14 +332,18 @@ func nilnessOf(stack []fact, v ssa.Value) nilness {
 }
 
 func slice2ArrayPtrLen(v *ssa.SliceToArrayPointer) int64 {
+	//nolint: forcetypeassert // original code
 	return v.Type().(*types.Pointer).Elem().Underlying().(*types.Array).Len()
 }
 
 // If b ends with an equality comparison, eq returns the operation and
 // its true (equal) and false (not equal) successors.
+//
+//nolint:nonamedreturns
 func eq(b *ssa.BasicBlock) (op *ssa.BinOp, tsucc, fsucc *ssa.BasicBlock) {
 	if If, ok := b.Instrs[len(b.Instrs)-1].(*ssa.If); ok {
 		if binop, ok := If.Cond.(*ssa.BinOp); ok {
+			//nolint:exhaustive // original code
 			switch binop.Op {
 			case token.EQL:
 				return binop, b.Succs[0], b.Succs[1]
@@ -390,10 +400,10 @@ func (ff facts) negate() facts {
 	return nn
 }
 
-// t0 : t11 -> t12 -> t13
-// *t0 := t11
-// *t0 := t12
-// *t0 := t13
+// t0 : t11 -> t12 -> t13.
+// *t0 := t11.
+// *t0 := t12.
+// *t0 := t13.
 type assignments map[*ssa.Alloc][]*ssa.Store
 
 func (a assignments) add(s *ssa.Store) {
@@ -407,6 +417,7 @@ func (a assignments) add(s *ssa.Store) {
 	}
 }
 
+//nolint:ireturn // cannot return concrete types
 func (a assignments) current(x *ssa.Alloc, instr ssa.Instruction) ssa.Value {
 	stores := a[x]
 	if len(stores) == 0 {
@@ -440,7 +451,7 @@ func (a assignments) current(x *ssa.Alloc, instr ssa.Instruction) ssa.Value {
 }
 
 // *t0 (t0 is a *ssa.Alloc) -> t0
-// otherwise returns nil
+// otherwise returns nil.
 func alloc(v ssa.Value) *ssa.Alloc {
 	if unop, ok := v.(*ssa.UnOp); ok {
 		if unop.Op == token.MUL {
