@@ -24,7 +24,9 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: qawatake/runcache@main
         with:
-          path: ~/.cache/go-build
+          path: |
+            ~/.cache/go-build
+            ~/.cache/golangci-lint
           skip-save: ${{ github.ref != 'refs/heads/main' }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Lint
