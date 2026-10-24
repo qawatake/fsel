@@ -317,9 +317,8 @@ func nilnessOf(stack []fact, v ssa.Value) nilness {
 	case *ssa.Const:
 		if v.IsNil() {
 			return isnil // nil or zero value of a pointer-like type
-		} else {
-			return unknown // non-pointer
 		}
+		return unknown // non-pointer
 	}
 
 	// Search dominating control-flow facts.
