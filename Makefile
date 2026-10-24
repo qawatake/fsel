@@ -1,5 +1,5 @@
 BINDIR := $(CURDIR)/bin
-golangci-lint := go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.59.1
+golangci-lint := go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
 gofmtmd := go run github.com/po3rin/gofmtmd/cmd/gofmtmd@latest
 
 fmtmd:
